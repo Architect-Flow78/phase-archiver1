@@ -1,40 +1,57 @@
 import streamlit as st
 import zlib
 import io
-import numpy as np
 
+# Твоя константа (Золотое сечение)
 PHI = 1.61803398875
 
-def phase_transform_v2(data):
-    """ 
-    Версия 2.0: Золотой Резонанс.
-    Мы не просто вычитаем байты, мы ищем 'замок' через PHI.
-    """
-    if not data: return None
-    arr = np.frombuffer(data, dtype=np.uint8).astype(np.int16)
-    transformed = np.zeros_like(arr, dtype=np.uint8)
-    
-    transformed[0] = arr[0]
-    for i in range(1, len(arr)):
-        # Золотой прогноз: следующий байт должен быть в резонансе с прошлым
-        # Используем PHI как оператор поворота фазы
-        prediction = int(arr[i-1] * (PHI - 1)) % 256
-        # Сохраняем только отклонение от резонанса
-        transformed[i] = (arr[i] - prediction) % 256
-        
-    return zlib.compress(transformed.tobytes(), level=9)
+def phase_logic(data, mode="pack"):
+    """ Чистая топологическая намотка без внешних библиотек """
+    if mode == "pack":
+        # Сжатие
+        res = bytearray()
+        res.append(data[0])
+        for i in range(1, len(data)):
+            # Золотой прогноз: (предыдущий байт * 0.618)
+            prediction = int(data[i-1] * (PHI - 1)) % 256
+            diff = (data[i] - prediction) % 256
+            res.append(diff)
+        return zlib.compress(res, level=9)
+    else:
+        # Распаковка
+        raw = zlib.decompress(data)
+        res = bytearray()
+        res.append(raw[0])
+        for i in range(1, len(raw)):
+            prediction = int(res[i-1] * (PHI - 1)) % 256
+            original_val = (raw[i] + prediction) % 256
+            res.append(original_val)
+        return res
 
-def phase_restore_v2(compressed_data):
-    """ Обратное восстановление резонанса """
-    diffs = np.frombuffer(zlib.decompress(compressed_data), dtype=np.uint8).astype(np.int16)
-    restored = np.zeros_like(diffs, dtype=np.uint8)
-    
-    restored[0] = diffs[0]
-    for i in range(1, len(diffs)):
-        prediction = int(restored[i-1] * (PHI - 1)) % 256
-        restored[i] = (diffs[i] + prediction) % 256
-        
-    return restored.tobytes()
+# --- ИНТЕРФЕЙС ---
+st.title("🌀 Phase Archiver V2.1")
+st.write(f"Инструмент Николая. Метрика: $\pi=1, \Phi=1.618$")
 
-# --- Остальной интерфейс Streamlit оставляем таким же, 
-# просто меняем вызовы функций на phase_transform_v2 ---
+uploaded_file = st.file_uploader("Загрузите любой файл", type=None)
+
+if uploaded_file is not None:
+    file_bytes = uploaded_file.read()
+    name = uploaded_file.name
+    
+    if name.endswith(".phase"):
+        st.info("🔄 Восстановление из архива...")
+        try:
+            out = phase_logic(file_bytes, mode="unpack")
+            st.success("Файл восстановлен!")
+            st.download_button("📥 Скачать результат", io.BytesIO(out), file_name=name.replace(".phase", ""))
+        except:
+            st.error("Ошибка! Возможно, файл не является фазовым архивом.")
+    else:
+        st.info("🌀 Сжатие по фазе...")
+        out = phase_logic(file_bytes, mode="pack")
+        gain = (1 - len(out)/len(file_bytes)) * 100
+        st.success(f"Готово! Эффективность: {gain:.2f}%")
+        st.download_button("📥 Скачать .phase", io.BytesIO(out), file_name=name + ".phase")
+
+st.divider()
+st.caption("Если экран темный — обновите страницу через минуту.")
